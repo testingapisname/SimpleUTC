@@ -40,10 +40,10 @@
         <!-- Input Form Section -->
         <section class="space-y-4">
             <div class="space-y-2">
-                <label for="input-time" class="block text-sm font-medium text-gray-700">1. Enter Time in UTC (Format: H:MM AM/PM)</label>
+                <label for="input-time" class="block text-sm font-medium text-gray-700">1. Enter Time in UTC (Format: H:MM AM/PM or HH:MM 24h)</label>
                 <div class="flex space-x-2">
                     <!-- Time Input -->
-                    <input type="text" id="input-time" placeholder="e.g., 2:30" class="input-field w-3/4 p-3 border border-gray-300 rounded-lg font-mono">
+                    <input type="text" id="input-time" placeholder="e.g., 2:30 PM or 14:30" class="input-field w-3/4 p-3 border border-gray-300 rounded-lg font-mono">
                     <!-- AM/PM Selector -->
                     <select id="am-pm-select" class="input-field w-1/4 p-3 border border-gray-300 rounded-lg">
                         <option value="AM">AM</option>
@@ -133,7 +133,7 @@
 
 
             /**
-             * Converts the input UTC time (12-hour + AM/PM) to the selected target timezone.
+             * Converts the input UTC time (12-hour + AM/PM OR 24-hour) to the selected target timezone.
              */
             function convertTime() {
                 const inputTimeString = inputTimeEl.value.trim();
@@ -149,33 +149,59 @@
                     // Extract only hour and minute components (allow 1 or 2 digits for hour)
                     const parts = inputTimeString.match(/(\d{1,2}):(\d{2})/);
                     if (!parts) {
-                        throw new Error("Invalid time format. Use H:MM, e.g., 8:30 or 12:00.");
+                        throw new Error("Invalid time format. Use H:MM, e.g., 8:30 or 14:00.");
                     }
                     // Destructure and convert to numbers.
-                    let [_, hour, minute] = parts.map(Number);
+                    let hour = Number(parts[1]);
+                    let minute = Number(parts[2]);
                     
-                    if (hour < 1 || hour > 12 || minute < 0 || minute > 59) {
-                        throw new Error("Hour must be 1-12 and minute 00-59.");
+                    // Input variables for the conversion logic
+                    let hour24;
+                    let displayTime; 
+
+                    // 2. Validate and Determine 24-hour format (0-23)
+                    if (minute < 0 || minute > 59) {
+                        throw new Error("Minute must be 00-59.");
                     }
 
-                    // 2. Convert 12-hour format (HH:MM AM/PM) to 24-hour format (0-23)
-                    if (amPm === 'PM' && hour !== 12) {
-                        hour += 12; // 1 PM -> 13, 11 PM -> 23
-                    } else if (amPm === 'AM' && hour === 12) {
-                        hour = 0; // 12 AM (midnight) -> 0
+                    if (hour >= 13 && hour <= 23) {
+                        // Case A: 24-hour time (Military) input, e.g., 14:30
+                        hour24 = hour;
+                        displayTime = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')} (24h)`;
+
+                    } else if (hour >= 0 && hour <= 12) {
+                        // Case B: 12-hour time input, use the AM/PM selector
+                        
+                        if (hour === 0 && amPm === 'AM') {
+                            throw new Error("Invalid 12-hour format. Hour must be 1-12. Did you mean 12:XX AM?");
+                        }
+                        
+                        hour24 = hour;
+                        
+                        if (amPm === 'PM' && hour !== 12) {
+                            hour24 += 12; // 1 PM -> 13, 11 PM -> 23
+                        } else if (amPm === 'AM' && hour === 12) {
+                            hour24 = 0; // 12 AM (midnight) -> 0
+                        }
+                        
+                        // For display, use the user's 12-hour input style
+                        displayTime = `${hour}:${minute.toString().padStart(2, '0')} ${amPm}`;
+
+                    } else {
+                        throw new Error("Hour must be between 0-23.");
                     }
-                    // 1 AM - 11 AM remain 1-11. 12 PM remains 12.
+
 
                     // 3. Establish the UTC moment for today based on user input HH:MM
                     const now = new Date();
                     
-                    // Create a date object representing the input time (24-hour 'hour', 'minute') at today's date, 
+                    // Create a date object representing the input time (24-hour 'hour24', 'minute') at today's date, 
                     // with the time component interpreted as UTC.
                     const utcMoment = new Date(Date.UTC(
                         now.getUTCFullYear(), 
                         now.getUTCMonth(), 
                         now.getUTCDate(), 
-                        hour, 
+                        hour24, 
                         minute, 
                         0
                     ));
@@ -190,8 +216,8 @@
                     const targetTimeFormatter = new Intl.DateTimeFormat('en-US', { ...timeOptions, timeZone: targetTimeZone });
                     const targetDateFormatter = new Intl.DateTimeFormat('en-US', { ...dateOptions, timeZone: targetTimeZone });
                     
-                    // UTC Input Display (Show the original 12-hour input)
-                    utcInputTimeEl.textContent = `${inputTimeString} ${amPm}`;
+                    // UTC Input Display (Show the derived input style)
+                    utcInputTimeEl.textContent = displayTime;
                     utcInputDateEl.textContent = targetDateFormatter.format(now); // Show the date used as context (today)
 
                     // Target Output Display (The converted time and potentially new date)
